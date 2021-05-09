@@ -65,7 +65,7 @@ private:
     void shutdownInputCallback(const std_msgs::Empty::ConstPtr& msg);
     void startInputCallback(const std_msgs::Empty::ConstPtr& msg);
     void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
-	void PosCallback(const std_msgs::Float32::ConstPtr& msg);
+	void PosRealCallback(const std_msgs::Float32::ConstPtr& msg);
 
     ros::NodeHandle nh_;
 
@@ -75,13 +75,13 @@ private:
     ros::Subscriber start_input_sub;
 
 	/***********************/
-	ros::Subscriber throw_Pos_sub;
+	ros::Subscriber throw_pos_real_sub;
 	/***********************/
 
     ros::Publisher pick_position_pub;
     ros::Publisher pick_enable_pub;
 
-    ros::Publisher throw_position_pub;
+    ros::Publisher throw_target_pub;
     ros::Publisher throw_enable_pub;
 
 	/***********************/
@@ -98,8 +98,9 @@ private:
 
     std_msgs::Float32 pick_position_msg;
     std_msgs::Float32 throw_position_msg;
+	std_msgs::Float32 throw_velocity_msg;
 	/**********************/
-	std_msgs::Float32 throw_Pos_msg;
+	std_msgs::Float32 throw_pos_real_msg;
 	/**********************/
 
 	/**********************/
@@ -113,22 +114,24 @@ private:
 
     double steps_per_mm = 1;
 
-    std::vector<double> pick_position = { 0, pi/2, 2*pi/3, };
+    std::vector<double> pick_position = { 0, 2*pi, -2*pi, 6*pi};
     int pick_position_index = 0;
 
-    std::vector<double> throw_position = { 0, 2*pi, -2*pi };
+	std::vector<double> throw_velocity = { 0, 2*pi, -2*pi, 4*pi, 8*pi};  //vel
+    int throw_velocity_index = 0;
+
+    std::vector<double> throw_position = { 0, 0.5*pi, pi, 1.5*pi, 2*pi}; //pos
     int throw_position_index = 0;
 
 	double throw_position_real = 0;
-
-	long int throw2_position_real = 0;
 
 	int dr_mode = 0;
 	// 0 : taiki_mode
 	// 1 : genten_awase_mode
 	// 2 : haji_mode
 	// 3 : tohteki_mode
-	// 4 : defence_mode
+	// 4 : yoin_mode
+	// 5 : defence_mode
 
 	/************************/
 	unsigned char solenoid_data = 0;
@@ -185,10 +188,10 @@ CrMain::CrMain(void)
     start_input_sub = nh_.subscribe<std_msgs::Empty>("start_input", 10, &CrMain::startInputCallback, this);
 
 	/***************************************/
-	throw_Pos_sub = nh_.subscribe<std_msgs::Float32>("throw/motorth_Pos", 10, &CrMain::PosCallback, this);
+	throw_pos_real_sub = nh_.subscribe<std_msgs::Float32>("throw/motorth_pos_real", 10, &CrMain::PosRealCallback, this);
 	/***************************************/
 
-    this->throw_position_pub = nh_.advertise<std_msgs::Float32>("throw/motorth_cmd_pos", 1);
+    this->throw_target_pub = nh_.advertise<std_msgs::Float32>("throw/motorth_target", 1);
     this->throw_enable_pub = nh_.advertise<std_msgs::UInt8>("throw/motorth_cmd", 1);
 
     this->pick_position_pub = nh_.advertise<std_msgs::Float32>("pick/motorpc_cmd_pos", 1);
@@ -297,9 +300,37 @@ void CrMain::startInputCallback(const std_msgs::Empty::ConstPtr& msg)
     this->_shutdown = 0;
 }
 /**************************************************************************************/
-void CrMain::PosCallback(const std_msgs::Float32::ConstPtr& msg)
+void CrMain::PosRealCallback(const std_msgs::Float32::ConstPtr& msg)
 {
 	throw_position_real = msg->data;
+	if(dr_mode == 3)
+	{
+		if(throw_position_real > throw_position[4])
+		{
+			dr_mode = 4;
+			solenoid_data = (solenoid_data & 0b11111011);
+            solenoid_position_msg.data = solenoid_data;
+            solenoid_position_pub.publish(solenoid_position_msg);
+
+            ROS_INFO("solenoid ch2 off");
+			ROS_INFO("dr_mode = 4");
+		}
+	}
+	if(dr_mode == 4)
+	{
+		if(throw_position_real > ( throw_position[4] + pi/2 ) )
+		{
+			dr_mode = 0;
+			throw_velocity_index = 0;
+            throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+            throw_target_pub.publish(throw_velocity_msg);
+
+			ROS_INFO("vel Index 0");
+			ROS_INFO("dr_mode = 0");
+			ROS_INFO("finished");
+		}
+	}
+
 }
 /**************************************************************************************/
 void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
@@ -403,83 +434,16 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 
 			ROS_INFO("rotation Right      (button8:ButtonRightThumb)");
         }
-       else if (_4 && !last_4)
+		else if (_4 && !last_4)
         {
-        	if ( (solenoid_data & 0b00000001) == 0b00000000 )
-        	{
-            	// solenoid ch0 on
-            	solenoid_data = (solenoid_data | 0b00000001);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch0 on     (button4:ButtonY)");
-            }
-            
-            else
-            {
-            	// solenoid ch0 off
-            	solenoid_data = (solenoid_data & 0b11111110);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch0 off    (button4:ButtonY)");
-            }
-
-        }
-        else if (_3 && !last_3)
-        {
-            if ( (solenoid_data & 0b00000010) == 0b00000000 )
-        	{
-            	// solenoid ch1 on
-            	solenoid_data = (solenoid_data | 0b00000010);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch1 on     (button3:ButtonB)");
-            }
-            
-            else
-            {
-            	// solenoid ch1 off
-            	solenoid_data = (solenoid_data & 0b11111101);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch1 off    (button3:ButtonB)");
-            	}
-        }
-        else if (_2 && !last_2)
-        {
-            if ( (solenoid_data & 0b00000100) == 0b00000000 )
-        	{
-            	// solenoid ch2 on
-            	solenoid_data = (solenoid_data | 0b00000100);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch2 on     (button2:ButtonA)");
-            }
-            
-            else
-            {
-            	// solenoid ch2 off
-            	solenoid_data = (solenoid_data & 0b11111011);
-            	solenoid_position_msg.data = solenoid_data;
-            	solenoid_position_pub.publish(solenoid_position_msg);
-
-            	ROS_INFO("solenoid ch2 off    (button2:ButtonA)");
-            }
-        }
-        else if (_1 && !last_1)
-        {
-            if ( (solenoid_data & 0b00001000) == 0b00000000 )
+			/*if ( (solenoid_data & 0b00001000) == 0b00000000 )
         	{
             	// solenoid ch3 on
             	solenoid_data = (solenoid_data | 0b00001000);
             	solenoid_position_msg.data = solenoid_data;
             	solenoid_position_pub.publish(solenoid_position_msg);
 
-            	ROS_INFO("solenoid ch3 on     (button1:ButtonX)");
+            	ROS_INFO("solenoid ch3 on     (button4:ButtonY)");
             }
             
             else
@@ -489,17 +453,88 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
             	solenoid_position_msg.data = solenoid_data;
             	solenoid_position_pub.publish(solenoid_position_msg);
 
-            	ROS_INFO("solenoid ch3 off    (button1:ButtonX)");
+            	ROS_INFO("solenoid ch3 off    (button4:ButtonY)");
+            }*/
+
+			// solenoid_ch3 is now used for velocity special data access button
+
+			throw_position[0] = throw_position_real;
+			throw_position[1] = throw_position_real + 0.5*pi ;
+			throw_position[2] = throw_position_real + pi ;
+			throw_position[3] = throw_position_real + 1.5*pi ;
+			throw_position[4] = throw_position_real + 2*pi ;
+			ROS_INFO("position vector update");
+
+        }
+        else if (_3 && !last_3)
+        {
+			if ( (solenoid_data & 0b00000001) == 0b00000000 )
+        	{
+            	// solenoid ch0 on
+            	solenoid_data = (solenoid_data | 0b00000001);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch0 on     (button3:ButtonB)");
+            }
+            
+            else
+            {
+            	// solenoid ch0 off
+            	solenoid_data = (solenoid_data & 0b11111110);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch0 off    (button3:ButtonB)");
+            }
+        }
+        else if (_2 && !last_2)
+        {
+			if ( (solenoid_data & 0b00000010) == 0b00000000 )
+        	{
+            	// solenoid ch1 on
+            	solenoid_data = (solenoid_data | 0b00000010);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch1 on     (button2:ButtonA)");
+            }
+            
+            else
+            {
+            	// solenoid ch1 off
+            	solenoid_data = (solenoid_data & 0b11111101);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch1 off    (button2:ButtonA)");
+            }
+        }
+        else if (_1 && !last_1)
+        {
+			if ( (solenoid_data & 0b00000100) == 0b00000000 )
+        	{
+            	// solenoid ch2 on
+            	solenoid_data = (solenoid_data | 0b00000100);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch2 on     (button1:ButtonX)");
+            }
+            
+            else
+            {
+            	// solenoid ch2 off
+            	solenoid_data = (solenoid_data & 0b11111011);
+            	solenoid_position_msg.data = solenoid_data;
+            	solenoid_position_pub.publish(solenoid_position_msg);
+
+            	ROS_INFO("solenoid ch2 off    (button1:ButtonX)");
             }
         }
 		/******************************************/
 		else if (_5 && !last_5)
         {
-			/*****/
-			throw_position_index = 0;
-            throw_position_msg.data = throw_position[throw_position_index];
-            throw_position_pub.publish(throw_position_msg);
-			/*****/
 			shirasu_cmd_msg.data = 1;
 			throw_enable_pub.publish(shirasu_cmd_msg);
 
@@ -507,15 +542,11 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
         }
         else if (_6 && !last_6)
         {
-			/*****/
-			throw_position_index = 0;
-            throw_position_msg.data = throw_position[throw_position_index];
-            throw_position_pub.publish(throw_position_msg);
-			/*****/
             shirasu_cmd_msg.data = 6;
 			throw_enable_pub.publish(shirasu_cmd_msg);
 
 			ROS_INFO("shirasu pos         (button6:ButtonRB)");
+			ROS_INFO("WARNING !!  IN this state, you shuold be aware of the miss click!!");
         }
 		/*******************************************/
         else if (_13 && !last_13)
@@ -523,37 +554,44 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
             if(_13 == 1)
 			{
 				if(shirasu_cmd_msg.data == 1)
-					{
-					// set the pick
-            		pick_position_index = 0;
-            		pick_position_msg.data = pick_position[pick_position_index];
-            		throw_position_pub.publish(pick_position_msg);
+				{
+					// velocity Index 3
+            		throw_velocity_index = 3;
+            		throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+            		throw_target_pub.publish(throw_velocity_msg);
 
-            		ROS_INFO("vel Index 0         (button13+:AxisDPadX)");
-					}
+            		ROS_INFO("vel Index 3         (button13+:AxisDPadX)");
+				}
+				else if(shirasu_cmd_msg.data == 6)
+				{
+					// position Index 3
+            		throw_position_index = 3;
+            		throw_position_msg.data = throw_position[throw_position_index];
+            		throw_target_pub.publish(throw_position_msg);
+
+            		ROS_INFO("pos Index 3         (button13+:AxisDPadX)");
+				}
 			}
 			else if(_13 == -1)
 			{
-				/*
 				if(shirasu_cmd_msg.data == 1)
 				{
-					// set the pick
-            		pick_position_index = 2;
-            		pick_position_msg.data = pick_position[pick_position_index];
-            		throw_position_pub.publish(pick_position_msg);
+					// velocity Index 1
+            		throw_velocity_index = 1;
+            		throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+            		throw_target_pub.publish(throw_velocity_msg);
 
-            		ROS_INFO("vel Index 2         (button13-:AxisDPadX)");
+            		ROS_INFO("vel Index 1         (button13-:AxisDPadX)");
 				}
-				*/
-				if(shirasu_cmd_msg.data == 6)
-					{
-						// warizan
-						throw2_position_real = (long int)( throw_position_real * 1000 );
-						throw_position[0] = ( ( (double)throw2_position_real ) ) / 1000;
-						throw_position[1] = ( ( (double)throw2_position_real ) + 500*pi )/ 1000;
-						throw_position[2] = ( ( (double)throw2_position_real ) + 1500*pi )/ 1000;
-						ROS_INFO("vector update       (button14-:AxisDPadX)");
-					}
+				else if(shirasu_cmd_msg.data == 6)
+				{
+					// position Index 1
+            		throw_position_index = 1;
+            		throw_position_msg.data = throw_position[throw_position_index];
+            		throw_target_pub.publish(throw_position_msg);
+
+            		ROS_INFO("pos Index 1         (button13-:AxisDPadX)");
+				}
 			}
         }
         else if (_14 && !last_14)
@@ -562,24 +600,42 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 			{
 				if(shirasu_cmd_msg.data == 1)
 				{
-					// serve the pick
-            		pick_position_index = 2;
-            		pick_position_msg.data = pick_position[pick_position_index];
-            		throw_position_pub.publish(pick_position_msg);
+					// velocity Index 2
+            		throw_velocity_index = 2;
+            		throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+            		throw_target_pub.publish(throw_velocity_msg);
 
             		ROS_INFO("vel Index 2         (button14+:AxisDPadY)");
+				}
+				else if(shirasu_cmd_msg.data == 6)
+				{
+					// position Index 2
+            		throw_position_index = 2;
+            		throw_position_msg.data = throw_position[throw_position_index];
+            		throw_target_pub.publish(throw_position_msg);
+
+            		ROS_INFO("pos Index 2         (button14+:AxisDPadY)");
 				}
 			}
 			else if(_14 == -1)
 			{
 				if(shirasu_cmd_msg.data == 1)
 				{
-					// serve the pick
-            		pick_position_index = 1;
-            		pick_position_msg.data = pick_position[pick_position_index];
-            		throw_position_pub.publish(pick_position_msg);
+					// velocity Index 0
+            		throw_velocity_index = 0;
+            		throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+            		throw_target_pub.publish(throw_velocity_msg);
 
-            		ROS_INFO("vel Index 1         (button14-:AxisDPadY)");
+            		ROS_INFO("vel Index 0         (button14-:AxisDPadY)");
+				}
+				else if(shirasu_cmd_msg.data == 6)
+				{
+					// position Index 0
+            		throw_position_index = 0;
+            		throw_position_msg.data = throw_position[throw_position_index];
+            		throw_target_pub.publish(throw_position_msg);
+
+            		ROS_INFO("pos Index 0         (button14-:AxisDPadY)");
 				}
 			}
         }
@@ -587,24 +643,34 @@ void CrMain::joyCallback(const sensor_msgs::Joy::ConstPtr& joy)
 
 		else if (_9 && !last_9)
         {
-			if(shirasu_cmd_msg.data == 6)
+			if(shirasu_cmd_msg.data == 1)
 			{
-				throw_position_index = 1;
-            	throw_position_msg.data = throw_position[throw_position_index];
-            	throw_position_pub.publish(throw_position_msg);
-
-            	ROS_INFO("pos Index 1         (button9:ButtonBack)");
+				if(act_enable_msg.data == 1)
+				{
+					act_enable_msg.data = 2;
+					solenoid_enable_pub.publish(act_enable_msg);
+					act_enable_msg.data = 1;
+					ROS_INFO("ashidome on         (button9:ButtonBack)");
+					ROS_INFO("This mode will be automatically reseted");
+					ROS_INFO("Please input little velocity data");
+				}
 			}
         }
 		else if (_10 && !last_10)
         {
-			if(shirasu_cmd_msg.data == 6)
+			if(shirasu_cmd_msg.data == 1)
 			{
-				throw_position_index = 2;
-            	throw_position_msg.data = throw_position[throw_position_index];
-            	throw_position_pub.publish(throw_position_msg);
+				throw_velocity_index = 4;
+            	throw_velocity_msg.data = throw_velocity[throw_velocity_index];
+           		throw_target_pub.publish(throw_velocity_msg);
 
-				ROS_INFO("pos Index 2         (button10:ButtonStart)");
+				dr_mode = 3;
+
+				ROS_INFO("HI SEEPD !!  BECAREFUL !!");
+				ROS_INFO("dr_mode 3");
+           		ROS_INFO("vel Index 4         (button10:ButtonStart)");
+
+				//dr_mode = 3;	// tohteki_mode
 			}
         }
 		/********************************************/

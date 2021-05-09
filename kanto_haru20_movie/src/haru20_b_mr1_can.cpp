@@ -87,8 +87,8 @@ private:
 
 	/***********************/
     void thmotorCmdCallback(const std_msgs::UInt8::ConstPtr& msg);
-	void thmotorPosCallback(const std_msgs::Float32::ConstPtr& msg);
-    void thmotorCmdPosCallback(const std_msgs::Float32::ConstPtr& msg);
+	void thmotorPosRealCallback(const std_msgs::Float32::ConstPtr& msg);
+    void thmotorTargetCallback(const std_msgs::Float32::ConstPtr& msg);
 	/***********************/
    
     void pcmotorCmdCallback(const std_msgs::UInt8::ConstPtr& msg);
@@ -132,8 +132,8 @@ private:
 	/***********************/
     ros::Publisher  _th_motor_status_pub;
     ros::Subscriber _th_motor_cmd_sub;
-	ros::Publisher  _th_motor_Pos_pub;
-    ros::Subscriber _th_motor_cmd_pos_sub;
+	ros::Publisher  _th_motor_pos_real_pub;
+    ros::Subscriber _th_motor_target_sub;
 	/***********************/
 
     ros::Publisher  _pc_motor_status_pub;
@@ -172,8 +172,8 @@ private:
 
 	/**************************************/
     static constexpr uint16_t id_th_motor_cmd           = 0x4c4;
-    static constexpr uint16_t id_th_motor_cmd_pos       = (id_th_motor_cmd + 1);
-	static constexpr uint16_t id_th_motor_Pos			= (id_th_motor_cmd + 2);
+    static constexpr uint16_t id_th_motor_target        = (id_th_motor_cmd + 1);
+	static constexpr uint16_t id_th_motor_pos_real		= (id_th_motor_cmd + 2);
     static constexpr uint16_t id_th_motor_status        = (id_th_motor_cmd + 3);
 	/**************************************/
 
@@ -219,8 +219,8 @@ Mr1CanNode::Mr1CanNode(void)
 	/*********************************/
     _th_motor_status_pub      		    = _nh.advertise<std_msgs::UInt8>("motor_status", 10);
     _th_motor_cmd_sub	        	    = _nh.subscribe<std_msgs::UInt8>("throw/motorth_cmd", 10, &Mr1CanNode::thmotorCmdCallback, this);
-	_th_motor_Pos_pub					= _nh.advertise<std_msgs::Float32>("throw/motorth_Pos", 10);
-    _th_motor_cmd_pos_sub	    	    = _nh.subscribe<std_msgs::Float32>("throw/motorth_cmd_pos", 10, &Mr1CanNode::thmotorCmdPosCallback, this);
+	_th_motor_pos_real_pub				= _nh.advertise<std_msgs::Float32>("throw/motorth_pos_real", 10);
+    _th_motor_target_sub	    	    = _nh.subscribe<std_msgs::Float32>("throw/motorth_target", 10, &Mr1CanNode::thmotorTargetCallback, this);
 	/*********************************/
 
     _pc_motor_status_pub      		    = _nh.advertise<std_msgs::UInt8>("motor_status", 10);
@@ -288,9 +288,9 @@ void Mr1CanNode::thmotorCmdCallback(const std_msgs::UInt8::ConstPtr& msg)
     this->sendData(id_th_motor_Pos, msg->data);
 }*/
 
-void Mr1CanNode::thmotorCmdPosCallback(const std_msgs::Float32::ConstPtr& msg)
+void Mr1CanNode::thmotorTargetCallback(const std_msgs::Float32::ConstPtr& msg)
 {
-    this->sendData(id_th_motor_cmd_pos, msg->data);
+    this->sendData(id_th_motor_target, msg->data);
 }
 /***************************/
 
@@ -329,7 +329,7 @@ void Mr1CanNode::canRxCallback(const can_msgs::CanFrame::ConstPtr &msg)
     std_msgs::UInt8 _th_motor_status_msg;
     std_msgs::UInt8 _pc_motor_status_msg;
 	/*************************/
-	std_msgs::Float32 _th_motor_Pos_msg;
+	std_msgs::Float32 _th_motor_pos_real_msg;
 	/*************************/
 
 	/*************************/
@@ -372,9 +372,9 @@ void Mr1CanNode::canRxCallback(const can_msgs::CanFrame::ConstPtr &msg)
 		/*********************************/
 
 		/*********************************/
-        case id_th_motor_Pos:
-			can_unpack(msg->data, _th_motor_Pos_msg.data);
-            _th_motor_Pos_pub.publish(_th_motor_Pos_msg);
+        case id_th_motor_pos_real:
+			can_unpack(msg->data, _th_motor_pos_real_msg.data);
+            _th_motor_pos_real_pub.publish(_th_motor_pos_real_msg);
             break;
 		/*********************************/
 
